@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import struct
 import sys
+import collections
 
 CFG_TYPE_STR = 0x01
 CFG_TYPE_U8  = 0x02
@@ -16,22 +17,13 @@ def eprint(*args, **kwargs):
 def printStringSetting(name, value):
     value_str = value.decode('utf-8').strip('\x00')
     print('%s = str!"%s"' % (name, value_str))
-    return True
 
 def printU8Setting(name, value):
-    if len(value) != 1:
-        return False
-    
     print('%s = u8!0x%X' % (name, value[0]))
-    return True
 
 def printU32Setting(name, value):
-    if len(value) != 4:
-        return False
-    
     value_u32 = struct.unpack('<I', value)[0]
     print('%s = u32!0x%X' % (name, value_u32))
-    return True
 
 def parseSystemSettings(path, size):
     # Create a dictionary to easily handle different config entry types.
@@ -40,6 +32,9 @@ def parseSystemSettings(path, size):
         CFG_TYPE_U8:  printU8Setting,
         CFG_TYPE_U32: printU32Setting
     }
+    
+    # Used to hold parsed configuration entries.
+    cfg = {}
     
     # Open settings file.
     try:
@@ -56,7 +51,6 @@ def parseSystemSettings(path, size):
         return
     
     offset = 4
-    cur_owner = prev_owner = None
     
     # Parse settings file.
     while offset < size:
@@ -90,15 +84,9 @@ def parseSystemSettings(path, size):
             eprint('Name for config entry at offset 0x%X doesn\'t hold an owner.' % (entry_offset))
             break
         
-        cur_owner = name[:name_start]
+        # Slice the read string to get the actual owner and name strings.
+        owner = name[:name_start]
         name = name[name_start+1:]
-        
-        # Print current owner if it's a different one.
-        if cur_owner != prev_owner:
-            if (entry_offset > 4):
-                print()
-            print('[%s]' % (cur_owner))
-            prev_owner = cur_owner
         
         # Get config entry type and config value size.
         (type, value_size) = struct.unpack('<BI', file.read(5))
@@ -113,18 +101,40 @@ def parseSystemSettings(path, size):
         value = file.read(value_size)
         offset += value_size
         
-        # Use our dictionary to retrieve a proper print function for the current config entry type.
-        print_func = cfg_type_dict.get(type, None)
-        if not print_func:
-            eprint('Unknown config value type for entry at offset 0x%X (0x%02X).' % (entry_offset, type))
+        # Safety check.
+        if ((type == CFG_TYPE_U8) and (len(value) != 1)) or ((type == CFG_TYPE_U32) and (len(value) != 4)):
+            eprint('Value size doesn\'t match entry type for config entry at offset 0x%X.' % (entry_offset))
             break
         
-        # Print config entry.
-        if not print_func(name, value):
-            eprint('Failed to print config entry at offset 0x%X.' % (entry_offset))
-            break
+        # Get dictionary for this owner.
+        owner_cfg = cfg.get(owner, {})
+        
+        # Update config entry.
+        owner_cfg.update({name: (entry_offset, type, value)})
+        
+        # Update owner dictionary.
+        cfg.update({owner: owner_cfg})
     
     file.close()
+    
+    # Print ordered config entries.
+    ordered_cfg = collections.OrderedDict(sorted(cfg.items()))
+    for (owner, owner_cfg) in ordered_cfg.items():
+        print('[%s]' % (owner))
+        
+        ordered_owner_cfg = collections.OrderedDict(sorted(owner_cfg.items()))
+        for (name, properties) in ordered_owner_cfg.items():
+            (entry_offset, type, value) = properties
+            
+            # Use our dictionary to retrieve a proper print function for the current config entry type.
+            print_func = cfg_type_dict.get(type, None)
+            if not print_func:
+                eprint('Unknown config value type for entry at offset 0x%X (0x%02X).' % (entry_offset, type))
+                return
+            
+            print_func(name, value)
+        
+        print()
 
 def main():
     # Check number of provided arguments.
