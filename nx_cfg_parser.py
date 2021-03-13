@@ -51,6 +51,7 @@ def parseSystemSettings(path, size):
         return
     
     offset = 4
+    error = False
     
     # Parse settings file.
     while offset < size:
@@ -104,6 +105,7 @@ def parseSystemSettings(path, size):
         # Safety check.
         if ((type == CFG_TYPE_U8) and (len(value) != 1)) or ((type == CFG_TYPE_U32) and (len(value) != 4)):
             eprint('Value size doesn\'t match entry type for config entry at offset 0x%X.' % (entry_offset))
+            error = True
             break
         
         # Get dictionary for this owner.
@@ -116,6 +118,9 @@ def parseSystemSettings(path, size):
         cfg.update({owner: owner_cfg})
     
     file.close()
+    
+    if error == True:
+        return
     
     # Print ordered config entries.
     ordered_cfg = collections.OrderedDict(sorted(cfg.items()))
