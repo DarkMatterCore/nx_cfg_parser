@@ -60,6 +60,7 @@ def parseSystemSettings(path, size):
         # Safety check.
         if (offset + 4) > size:
             eprint('Invalid name size field length for config entry at offset 0x%X (0x%X byte[s] left).' % (entry_offset, size - offset))
+            error = True
             break
         
         # Get name size.
@@ -69,12 +70,14 @@ def parseSystemSettings(path, size):
         # Safety check.
         if (not name_size) or ((offset + name_size + 5) > size):
             eprint('Invalid name/type/value size field length for config entry at offset 0x%X (0x%X byte[s] left, 0x%X-byte long name).' % (entry_offset, size - offset, name_size))
+            error = True
             break
         
         # Get actual name and stringify it. It's actual length should be a byte less than the retrieved name size (which holds a NULL terminator).
         name = file.read(name_size).decode('utf-8').strip('\x00')
         if len(name) != (name_size - 1):
             eprint('Invalid stringified name length for config entry at offset 0x%X.' % (entry_offset))
+            error = True
             break
         
         offset += name_size
@@ -83,6 +86,7 @@ def parseSystemSettings(path, size):
         name_start = name.find('!')
         if (name_start < 0):
             eprint('Name for config entry at offset 0x%X doesn\'t hold an owner.' % (entry_offset))
+            error = True
             break
         
         # Slice the read string to get the actual owner and name strings.
@@ -96,6 +100,7 @@ def parseSystemSettings(path, size):
         # Safety check.
         if (offset + value_size) > size:
             eprint('Invalid value field length for config entry at offset 0x%X (0x%X byte[s] left, 0x%X-byte long value).' % (entry_offset, size - offset, value_size))
+            error = True
             break
         
         # Get config value.
